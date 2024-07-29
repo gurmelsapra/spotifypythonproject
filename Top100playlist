@@ -1,0 +1,70 @@
+import requests
+from bs4 import BeautifulSoup
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+
+# Get user input for the date
+date = input("Which year do you want to travel to? Type the date in this format 'YYYY-MM-DD':\n")
+
+# Step 1: Scrape Billboard Hot 100 Chart
+URL = f"https://www.billboard.com/charts/hot-100/{date}/"
+
+response = requests.get(URL)
+data = response.text
+
+soup = BeautifulSoup(data, "html.parser")
+songs_list = []
+for song_tag in soup.find_all('li', class_="o-chart-results-list__item"):
+    title_tag = song_tag.find('h3', class_="c-title")
+    if title_tag:
+        song_title = title_tag.get_text(strip=True)
+        songs_list.append(song_title)
+
+print(songs_list)
+
+# Step 2: Use Spotipy to create a Spotify playlist
+
+# Replace with your Spotify app credentials ans use https://developer.spotify.com/ to create yours. 
+Client_ID =''
+Client_Secret =''
+redirect_uri = "http://localhost:8888/callback/"
+scope = "playlist-modify-private"
+
+# Authenticate with Spotify
+Spotify = spotipy.Spotify(auth_manager=SpotifyOAuth(
+    client_id=Client_ID,
+    client_secret=Client_Secret,
+    redirect_uri=redirect_uri,
+    scope=scope,
+    show_dialog=True,
+    cache_path=".cache"
+))
+
+# Get the current user ID
+user_id = Spotify.current_user()["id"]
+musics_dict = {}
+
+# Fetch Spotify track URLs
+for song in songs_list:
+    try:
+        result = Spotify.search(q=f"track:{song} year:{date.split('-')[0]}", type="track", limit=1, offset=0)
+        song_dic = result["tracks"]
+        song_items = song_dic["items"]
+        if song_items:
+            song_url = song_items[0]["external_urls"]["spotify"]
+            musics_dict[song] = song_url
+    except Exception as e:
+        print(f"Error fetching {song}: {e}")
+        pass
+
+print(musics_dict)
+
+# Create a new Spotify playlist
+playlist = Spotify.user_playlist_create(user_id, f"{date} Billboard Hot 100", public=False, description=f'Billboard Hot 100 for {date}')
+
+# Add songs to the playlist
+for song_url in musics_dict.values():
+    song_id = song_url.split("/")[-1]
+    Spotify.playlist_add_items(playlist_id=playlist["id"], items=[f'spotify:track:{song_id}'])
+
+print("Playlist created successfully!")
